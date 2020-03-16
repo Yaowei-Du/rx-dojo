@@ -1,0 +1,13 @@
+/.vs/
+/.idea/
+/.fake/
+.vscode/
+/packages/
+bin/
+obj/
+out/
+/.vscode/
+*.csproj.user
+.DS_Store
+.sonarqube/
+.store/
