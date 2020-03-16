@@ -6,4 +6,8 @@
     <RootNamespace>rx_dojo</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Reactive" Version="4.3.2" />
+  </ItemGroup>
+
 </Project>
