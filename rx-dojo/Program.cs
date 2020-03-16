@@ -1,7 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reactive.Concurrency;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace rx_dojo
 {
@@ -11,38 +15,36 @@ namespace rx_dojo
         {
             var queue = new Queue<ExampleClass>();
 
-            for (var i = 0; i < 1000; i++)
+            for (var i = 0; i < 40; i++)
             {
                 queue.Enqueue(new ExampleClass(i.ToString()));
             }
+            
 
-            var messages = getMessages(queue, 20);
-            messages.ToObservable()
+//            var messages = getMessages(queue, 200);
+            
+            GenerateObservable(queue)
                 .Where(l =>
                 {
                     if ((int.Parse(l.ObjName)) % 3 == 0)
                     {
-                        Console.WriteLine($"start wait for 2s: {l.ObjName}");
-                        Thread.Sleep(TimeSpan.FromMilliseconds(2000));
-                        Console.WriteLine($"end wait for 2s: {l.ObjName}");
+                        Console.WriteLine($"start wait for 0.2s: {l.ObjName} in {Thread.CurrentThread.ManagedThreadId}");
+                        Thread.Sleep(TimeSpan.FromMilliseconds(200));
                     }
                     return true;
                 })
+                .ObserveOn(NewThreadScheduler.Default)
                 .Where(l =>
                 {
                     if ((int.Parse(l.ObjName)) % 5 == 0)
                     {
-                        Console.WriteLine($"start wait for 5s: {l.ObjName}");
-                        Thread.Sleep(TimeSpan.FromMilliseconds(5000));
-                        Console.WriteLine($"end wait for 5s: {l.ObjName}");
-                        
+                        Console.WriteLine($"start wait for 0.5s: {l.ObjName} in {Thread.CurrentThread.ManagedThreadId}");
+                        Thread.Sleep(TimeSpan.FromMilliseconds(500));
                     }
                     return true;
                 })
+                .ObserveOn(NewThreadScheduler.Default)
                 .Subscribe(ProcessMessage);
-//            messages.ToObservable()
-//                .Buffer(5)
-//                .Subscribe(ProcessMessages);
         }
 
         static IEnumerable<ExampleClass> getMessages(Queue<ExampleClass> queue, int count)
@@ -58,7 +60,7 @@ namespace rx_dojo
 
         private static void ProcessMessage(ExampleClass obj)
         {
-            Console.WriteLine(obj.ObjName);
+            Console.WriteLine($"~~~~~~{obj.ObjName} in {Thread.CurrentThread.ManagedThreadId}");
         }
         
         private static void ProcessMessages(IEnumerable<ExampleClass> objs)
@@ -73,8 +75,24 @@ namespace rx_dojo
             }
         }
 
+        public static IObservable<ExampleClass> GenerateObservable(Queue<ExampleClass> queue)
+        {
+            return Observable.Create<ExampleClass>(observer =>
+            {
+                while (queue.Count != 0)
+                {
+                    var exampleClasses = getMessages(queue, 20);
+                    var message = exampleClasses;
+                    foreach (var exampleClass in message) observer.OnNext(exampleClass);
+                }
+                return Disposable.Create(() => Console.WriteLine("Observer has unsubscribed"));
+            });
+        }
+
     }
 
+
+    
 
     class ExampleClass
     {
