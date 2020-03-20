@@ -50,23 +50,17 @@ namespace rx_dojo
             Console.WriteLine("Finished async.");
         }
 
-        private static ExampleClass ProcessMessage(ExampleClass obj)
-        {
-            return Process("Method1", 100, obj);
-        }
+        private static readonly Func<ExampleClass, ExampleClass> ProcessMessage = obj => Process("Method1", 100, obj);
 
-        private static Either<Error, ExampleClass> ProcessMessage2(ExampleClass obj)
+        private static readonly Func<ExampleClass, Either<Error, ExampleClass>> ProcessMessage2 = obj =>
         {
             if (obj.ObjName == "5")
                 return Error.New($"Object {obj.ObjName} validation failed.");
-
             return Process("Method2", 100, obj);
-        }
+        };
 
-        private static Either<Error, ExampleClass> ProcessMessage3(Either<Error, ExampleClass> either)
-        {
-            return either.Map(curry(Process)("Method3")(500));
-        }
+        private static readonly Func<Either<Error, ExampleClass>, Either<Error, ExampleClass>> ProcessMessage3 =
+            either => map(either, curry(Process)("Method3")(500));
 
         private static readonly Func<string, int, ExampleClass, ExampleClass> Process = (methodName, taskTime, obj) =>
         {
