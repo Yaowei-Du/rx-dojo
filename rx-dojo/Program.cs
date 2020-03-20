@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Threading;
+using LanguageExt;
+using LanguageExt.Common;
+using static LanguageExt.Prelude;
 
 namespace rx_dojo
 {
@@ -49,29 +52,30 @@ namespace rx_dojo
 
         private static ExampleClass ProcessMessage(ExampleClass obj)
         {
-            Process(obj, "Method1");
-            return obj;
+            return Process("Method1", 100, obj);
         }
 
-        private static ExampleClass ProcessMessage2(ExampleClass obj)
+        private static Either<Error, ExampleClass> ProcessMessage2(ExampleClass obj)
         {
-            Process(obj, "Method2");
-            return obj;
+            if (obj.ObjName == "5")
+                return Error.New($"Object {obj.ObjName} validation failed.");
+
+            return Process("Method2", 100, obj);
         }
 
-        private static ExampleClass ProcessMessage3(ExampleClass obj)
+        private static Either<Error, ExampleClass> ProcessMessage3(Either<Error, ExampleClass> either)
         {
-            Process(obj, "Method3", 500);
-            return obj;
+            return either.Map(curry(Process)("Method3")(500));
         }
 
-        private static void Process(ExampleClass obj, string methodName, int taskTime = 100)
+        private static readonly Func<string, int, ExampleClass, ExampleClass> Process = (methodName, taskTime, obj) =>
         {
             Console.WriteLine(
                 $"Message: {obj.ObjName}, in {methodName}#begin, Thread: {Thread.CurrentThread.ManagedThreadId}");
             Thread.Sleep(new Random().Next(10) * taskTime);
             Console.WriteLine(
                 $"Message: {obj.ObjName}, in {methodName}#end, Thread: {Thread.CurrentThread.ManagedThreadId}");
-        }
+            return obj;
+        };
     }
 }
