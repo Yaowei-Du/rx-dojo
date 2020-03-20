@@ -32,11 +32,15 @@ namespace rx_dojo
                 .ObserveOn(NewThreadScheduler.Default)
                 .Select(ProcessMessage3)
                 .Subscribe(obj => { },
-                    error => { },
+                    error =>
+                    {
+                        Console.WriteLine($"On error: {error.Message}");
+                        isCompleted = true;
+                    },
                     () =>
                     {
+                        Console.WriteLine("On complete.");
                         isCompleted = true;
-                        Console.WriteLine("Finished subscribe.");
                     });
 
             SpinWait.SpinUntil(() => isCompleted);
