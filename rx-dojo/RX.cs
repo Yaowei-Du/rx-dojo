@@ -5,12 +5,14 @@ using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LanguageExt;
+using LanguageExt.Common;
+using static LanguageExt.Prelude;
 
 namespace rx_dojo
 {
     public static class RX
     {
-        public static void exec()
+        public static void Run()
         {
             var queue = new Queue<ExampleClass>();
 
@@ -96,6 +98,4 @@ namespace rx_dojo
             return obj;
         };
     }
-}
-
 }
