@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using LanguageExt;
 using LanguageExt.Common;
 using static LanguageExt.Prelude;
@@ -22,13 +23,32 @@ namespace rx_dojo
 
             ProcessAsync(queue);
 
-            Console.WriteLine("Finished process.");
+            Print("Finished process.");
+        }
+
+        private static void Print(string log)
+        {
+            Console.WriteLine($"{DateTime.UtcNow:o} {log}");
         }
 
         private static void ProcessAsync(Queue<ExampleClass> queue)
         {
             var isCompleted = false;
-            StreamObservable.MessageObservable(queue)
+            var interval = 300;
+
+            var counter = 1;
+
+            Observable.Timer(TimeSpan.Zero, TimeSpan.FromMilliseconds(interval), NewThreadScheduler.Default)
+                .ObserveOn(NewThreadScheduler.Default)
+                .Select(l => Observable.FromAsync(async _ =>
+                {
+                    Print($"starting deque. counter: {counter}");
+                    counter += 1;
+                    var exampleClass = await Dequeue(queue);
+                    Print($"end deque. get message: {exampleClass.ObjName}");
+                    return exampleClass;
+                }))
+                .Concat()
                 .Select(ProcessMessage)
                 .ObserveOn(NewThreadScheduler.Default)
                 .Select(ProcessMessage2)
@@ -37,17 +57,23 @@ namespace rx_dojo
                 .Subscribe(obj => { },
                     error =>
                     {
-                        Console.WriteLine($"On error: {error.Message}");
+                        Print($"On error: {error.Message}");
                         isCompleted = true;
                     },
                     () =>
                     {
-                        Console.WriteLine("On complete.");
+                        Print("On complete.");
                         isCompleted = true;
                     });
 
             SpinWait.SpinUntil(() => isCompleted);
-            Console.WriteLine("Finished async.");
+            Print("Finished async.");
+        }
+
+        private static async Task<ExampleClass> Dequeue(Queue<ExampleClass> queue)
+        {
+            await Task.Delay(1000);
+            return queue.Dequeue();
         }
 
         private static readonly Func<ExampleClass, ExampleClass> ProcessMessage = obj => Process("Method1", 100, obj);
@@ -64,10 +90,10 @@ namespace rx_dojo
 
         private static readonly Func<string, int, ExampleClass, ExampleClass> Process = (methodName, taskTime, obj) =>
         {
-            Console.WriteLine(
+            Print(
                 $"Message: {obj.ObjName}, in {methodName}#begin, Thread: {Thread.CurrentThread.ManagedThreadId}");
             Thread.Sleep(new Random().Next(10) * taskTime);
-            Console.WriteLine(
+            Print(
                 $"Message: {obj.ObjName}, in {methodName}#end, Thread: {Thread.CurrentThread.ManagedThreadId}");
             return obj;
         };
