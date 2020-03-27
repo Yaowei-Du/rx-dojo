@@ -21,7 +21,7 @@ namespace rx_dojo
         {
             var sender = new MessageSender(connectionString, queueName);
 
-            var data = Enumerable.Range(1, 50).Select(i => new ExampleClass(i.ToString()));
+            var data = Enumerable.Range(1, 25).Select(i => new ExampleClass(i.ToString()));
 
             foreach (var item in data)
             {
@@ -45,44 +45,87 @@ namespace rx_dojo
 
         private static async Task InitializeReceiver(string connectionString, string queueName)
         {
-            var queue = new Queue<Message>();
+            var queue1 = new Queue<QueueMessage>();
 
             var sessionClient = new SessionClient(connectionString, queueName, ReceiveMode.PeekLock);
-            var sessionAsync = await sessionClient.AcceptMessageSessionAsync("session");
+            var session = await sessionClient.AcceptMessageSessionAsync("session");
 
-            for (var i = 0; i < 5; i++)
+            await ReceiveMessagesAsync(session, queue1, 10);
+            foreach (var message in new Queue<QueueMessage>(queue1))
             {
-                Console.WriteLine("start receiving.");
-                var receiveAsync = await sessionAsync.ReceiveAsync(10);
-                Console.WriteLine("end receiving.");
-                foreach (var message in receiveAsync)
+                try
                 {
-                    var exampleClass =
-                        JsonConvert.DeserializeObject<ExampleClass>(Encoding.UTF8.GetString(message.Body));
-                    Console.WriteLine(
-                        $"{DateTime.UtcNow:o} Message received:" +
-                        $"\n\tSessionId = {message.SessionId}, " +
-                        $"\n\tMessageId = {message.MessageId}, " +
-                        $"\n\tSequenceNumber = {message.SystemProperties.SequenceNumber}," +
-                        $"\n\tContent: [ item = {exampleClass.ObjName} ]"
-                    );
-                    queue.Enqueue(message);
+                    await ProcessMessage(message, "4");
+                    await ConsumeComplete(session, queue1, message.LockToken);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    break;
                 }
             }
-
-            foreach (var message in queue)
+            var queue2 = new Queue<QueueMessage>();
+            await ReceiveMessagesAsync(session, queue2, 10);
+            foreach (var message in new Queue<QueueMessage>(queue1))
             {
-                var exampleClass = JsonConvert.DeserializeObject<ExampleClass>(Encoding.UTF8.GetString(message.Body));
+                try
+                {
+                    await ProcessMessage(message, "20");
+                    await ConsumeComplete(session, queue1, message.LockToken);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    break;
+                }
+            } 
+        }
+
+        private static async Task ProcessMessage(QueueMessage message, string expectedLockMessage)
+        {
+            var exampleClass = JsonConvert.DeserializeObject<ExampleClass>(Encoding.UTF8.GetString(message.Body));
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(
+                $"{DateTime.UtcNow:o} Message received:" +
+                $"\n\tSessionId = {message.SessionId}, " +
+                $"\n\tMessageId = {message.MessageId}, " +
+                $"\n\tSequenceNumber = {message.Message.SystemProperties.SequenceNumber}," +
+                $"\n\tContent: [ item = {exampleClass.ObjName} ]"
+            );
+            if (exampleClass.ObjName == expectedLockMessage)
+            {
+                await Task.Delay(130000);
+            }
+
+            await Task.Delay(3000);
+        }
+
+        public static async Task ReceiveMessagesAsync(IMessageSession session,
+            Queue<QueueMessage> queue,
+            int count)
+        {
+            var messages = await session.ReceiveAsync(count) ?? new List<Message>();
+            var queueMessages = messages.Where(m => m != null)
+                .Select(m => new QueueMessage(m));
+            foreach (var message in queueMessages)
+            {
+                var exampleClass =
+                    JsonConvert.DeserializeObject<ExampleClass>(Encoding.UTF8.GetString(message.Body));
                 Console.WriteLine(
                     $"{DateTime.UtcNow:o} Message received:" +
                     $"\n\tSessionId = {message.SessionId}, " +
                     $"\n\tMessageId = {message.MessageId}, " +
-                    $"\n\tSequenceNumber = {message.SystemProperties.SequenceNumber}," +
+                    $"\n\tSequenceNumber = {message.Message.SystemProperties.SequenceNumber}," +
                     $"\n\tContent: [ item = {exampleClass.ObjName} ]"
                 );
-                await Task.Delay(90000);
-                await sessionAsync.CompleteAsync(message.SystemProperties.LockToken);
+                queue.Enqueue(message);
             }
+        }
+
+        public static async Task ConsumeComplete(IMessageSession session, Queue<QueueMessage> queue, string lockToken)
+        {
+            await session.CompleteAsync(lockToken);
+            queue.Dequeue();
         }
     }
 }
