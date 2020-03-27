@@ -16,3 +16,11 @@ foreach 5s, one 5min 10s -> the one SessionLockLostException
 10 messages, 2 mins lock timeout
 foreach 5s, one 2min 10s -> the one SessionLockLostException & rest messages are SessionLockLostException 
 
+### example 4
+10 messages, 2 mins lock timeout
+foreach 5s, one 2min 10s, re-create session and receive 10 message -> all complete
+
+### example 5
+10 messages, 2 mins lock timeout
+foreach 5s, one 2min 10s, renewLockSession -> rest message SessionLockLostException
+

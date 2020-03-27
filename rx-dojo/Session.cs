@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Azure.ServiceBus;
 using Microsoft.Azure.ServiceBus.Core;
+using Microsoft.Azure.ServiceBus.Management;
 using Newtonsoft.Json;
 
 namespace rx_dojo
@@ -19,6 +20,13 @@ namespace rx_dojo
 
         private static async Task SendMessagesAsync(string sessionId, string connectionString, string queueName)
         {
+            var managementClient = new ManagementClient(connectionString);
+            await managementClient.DeleteQueueAsync(queueName);
+            await managementClient.CreateQueueAsync(new QueueDescription(queueName)
+            {
+                LockDuration = TimeSpan.FromMinutes(2), RequiresSession = true
+            });
+
             var sender = new MessageSender(connectionString, queueName);
 
             var data = Enumerable.Range(1, 25).Select(i => new ExampleClass(i.ToString()));
@@ -45,55 +53,64 @@ namespace rx_dojo
 
         private static async Task InitializeReceiver(string connectionString, string queueName)
         {
-            var queue1 = new Queue<QueueMessage>();
-
             var sessionClient = new SessionClient(connectionString, queueName, ReceiveMode.PeekLock);
-            var session = await sessionClient.AcceptMessageSessionAsync("session");
 
-            await ReceiveMessagesAsync(session, queue1, 10);
-            foreach (var message in new Queue<QueueMessage>(queue1))
+            var expectedLockMessage = RandomBreakingMessage().ToList();
+
+            while (true)
             {
+                IMessageSession session;
                 try
                 {
-                    await ProcessMessage(message, "4");
-                    await ConsumeComplete(session, queue1, message.LockToken);
+                    session = await sessionClient.AcceptMessageSessionAsync("session", TimeSpan.FromMinutes(1));
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
-                    break;
+                    continue;
+                }
+
+                var queue = new Queue<QueueMessage>();
+                try
+                {
+                    await ReceiveMessagesAsync(session, queue, 10);
+
+                    foreach (var message in new Queue<QueueMessage>(queue))
+                    {
+                        await ProcessMessage(message, expectedLockMessage);
+                        await ConsumeComplete(session, queue, message.LockToken);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    await session.CloseAsync();
                 }
             }
-            var queue2 = new Queue<QueueMessage>();
-            await ReceiveMessagesAsync(session, queue2, 10);
-            foreach (var message in new Queue<QueueMessage>(queue1))
-            {
-                try
-                {
-                    await ProcessMessage(message, "20");
-                    await ConsumeComplete(session, queue1, message.LockToken);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                    break;
-                }
-            } 
         }
 
-        private static async Task ProcessMessage(QueueMessage message, string expectedLockMessage)
+        private static IEnumerable<string> RandomBreakingMessage()
+        {
+            var random = new Random();
+            var messages = Enumerable.Range(1, 5).Select(i => random.Next(1, 25).ToString()).ToList();
+            Console.WriteLine($"message should be break: {string.Join(",", messages)}");
+            return messages;
+        }
+
+        private static async Task ProcessMessage(QueueMessage message, IList<string> expectedLockMessage)
         {
             var exampleClass = JsonConvert.DeserializeObject<ExampleClass>(Encoding.UTF8.GetString(message.Body));
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine(
-                $"{DateTime.UtcNow:o} Message received:" +
+                $"{DateTime.UtcNow:o} Message processing:" +
                 $"\n\tSessionId = {message.SessionId}, " +
                 $"\n\tMessageId = {message.MessageId}, " +
                 $"\n\tSequenceNumber = {message.Message.SystemProperties.SequenceNumber}," +
                 $"\n\tContent: [ item = {exampleClass.ObjName} ]"
             );
-            if (exampleClass.ObjName == expectedLockMessage)
+            if (expectedLockMessage.Contains(exampleClass.ObjName))
             {
+                expectedLockMessage.Remove(exampleClass.ObjName);
                 await Task.Delay(130000);
             }
 
@@ -111,6 +128,7 @@ namespace rx_dojo
             {
                 var exampleClass =
                     JsonConvert.DeserializeObject<ExampleClass>(Encoding.UTF8.GetString(message.Body));
+                Console.ForegroundColor = ConsoleColor.Blue;
                 Console.WriteLine(
                     $"{DateTime.UtcNow:o} Message received:" +
                     $"\n\tSessionId = {message.SessionId}, " +
